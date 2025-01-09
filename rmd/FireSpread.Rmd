@@ -1,0 +1,211 @@
+---
+title: "FireSpreadvsTemp"
+author: "Harpreet"
+date: "2024-10-07"
+output: pdf_document
+---
+
+Introduction
+
+:   **In this project, we explored the relationship between temperature and fire spread rate in Canada. We visualized the distribution of fire spread rate and temperature, calculated the correlation coefficient, performed a linear regression analysis, and conducted a hypothesis test to determine whether the observed relationship is statistically significant. Additionally, we created a geospatial representation of fire spread rate along with temperature to better understand the spatial patterns and relationships between these variables.**
+
+:   **The results of the hypothesis test indicate whether there is a statistically significant relationship between temperature and fire spread rate.**
+
+```{r}
+## Load dataset
+data<- read.csv(file.choose(),header=T, na.strings = c("","NA"))
+```
+
+```{r}
+# Load the ggplot2 library
+library(ggplot2)
+# Filter out rows where Fire Spread Rate is negative
+data<- data %>%
+  filter(fire_spread_rate >= 0)
+# Create a scatter plot
+ggplot(data, aes(x = fire_spread_rate, y = temperature)) + 
+  geom_point(color = "yellow", size = 2) + 
+  #geom_smooth(method = "lm", se = FALSE, color = "red")
+
+ labs(title = "Relationship between Fire Spread Rate and Temperature", 
+       x = "Fire Spread Rate", 
+       y = "Temperature") + 
+  theme_classic()
+
+```
+
+```         
+```
+
+```{r}
+# Check for missing values in Temperature and FireSpreadRate
+missing_temps <- sum(is.na(data$temperature))
+missing_fire_spread <- sum(is.na(data$fire_spread_rate))
+
+print(paste("Missing Temperature values:", missing_temps))
+print(paste("Missing Fire Spread Rate values:", missing_fire_spread))
+
+
+```
+
+```{r}
+# Check the structure of the data
+str(data)
+
+# View unique values in Temperature and FireSpreadRate
+unique(data$temperature)
+unique(data$fire_spread_rate)
+
+```
+
+```{r}
+# Plot a histogram
+ggplot(data, aes(x = fire_spread_rate)) + 
+  geom_histogram(binwidth = 1, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Distribution of Fire Spread Rate", 
+       x = "Fire Spread Rate", 
+       y = "Frequency") + 
+  theme_classic()
+
+# Alternatively, plot a density plot
+ggplot(data, aes(x = fire_spread_rate)) + 
+  geom_density(fill = "blue", alpha = 0.5) +
+  labs(title = "Density Plot of Fire Spread Rate", 
+       x = "Fire Spread Rate", 
+       y = "Density") + 
+  theme_classic()
+
+```
+
+```{r}
+
+library(e1071)
+
+# Calculate skewness
+spread_rate_skewness <- skewness(data$fire_spread_rate)
+print(paste("Skewness of Fire Spread Rate:", spread_rate_skewness))
+
+```
+
+```{r}
+# Log Transformation
+data$log_fire_spread_rate <- log(data$fire_spread_rate + 1)
+
+log_spread_rate_skewness <- skewness(data$log_fire_spread_rate)
+print(paste("Skewness of Log Transformed Fire Spread Rate:", log_spread_rate_skewness))
+
+ggplot(data, aes(x = log_fire_spread_rate)) + 
+  geom_density(fill = "blue", alpha = 0.5) +
+  labs(title = "Log Transformed Density Plot of Fire Spread Rate", 
+       x = "Log Fire Spread Rate", 
+       y = "Density") + 
+  theme_classic()
+
+```
+
+```{r}
+# Calculate Pearson correlation between log-transformed fire spread rate and temperature
+correlation_log <- cor(data$log_fire_spread_rate, data$temperature, use = "complete.obs")
+print(paste("Pearson correlation coefficient (Log Fire Spread Rate and Temperature):", correlation_log))
+
+```
+
+```{r}
+# Fit a linear regression model
+log_model <- lm(log_fire_spread_rate ~ temperature, data = data)
+summary(log_model)
+ggplot(data, aes(x = temperature, y = log_fire_spread_rate)) +
+  geom_point(color = "red") +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(title = "Log Fire Spread Rate vs Temperature",
+       x = "Temperature", 
+       y = "Log Fire Spread Rate")
+
+```
+
+```{r}
+# Q-Q plot to check normality of residuals
+qqnorm(residuals(log_model))
+qqline(residuals(log_model), col = "blue")
+
+# Residuals vs Fitted plot
+plot(log_model, which = 1)
+
+# Histogram of residuals
+hist(residuals(log_model), main = "Histogram of Residuals", xlab = "Residuals", col = "lightblue")
+
+```
+
+```{r}
+# Get model summary and extract statistics
+log_model_summary <- summary(log_model)
+r_squared_log <- log_model_summary$r.squared
+adj_r_squared_log <- log_model_summary$adj.r.squared
+p_value_log <- log_model_summary$coefficients[2, 4]
+
+print(paste("R-squared (log model):", r_squared_log))
+print(paste("Adjusted R-squared (log model):", adj_r_squared_log))
+print(paste("p-value for temperature (log model):", p_value_log))
+
+```
+
+```{r}
+
+# Extra work--Consider including other relevant features
+data$humidity <- data$relative_humidity
+data$wind_speed <- data$wind_speed
+data$vegetation_type <- data$fuel_type
+
+# Update the model to include additional features
+model <- lm(fire_spread_rate ~ temperature + humidity + wind_speed + vegetation_type, data = data)
+
+
+
+# Summarize the updated model
+summary(model)
+
+```
+
+```{r}
+str(data)
+# Create SpreadCategory based on size_class
+data$SpreadCategory <- ifelse(data$size_class %in% c("D", "E"), "High", "Low")
+
+# View the updated dataset to ensure the column is added
+#head(data)
+
+```
+
+```{r}
+
+library(leaflet)
+leaflet(data) %>%
+  addTiles() %>%
+  addCircleMarkers(~fire_location_longitude, ~fire_location_latitude,
+                   radius = ~fire_spread_rate * 0.1,  
+                   color = ~ifelse(SpreadCategory == "High", "red", "green"),  
+                   fillOpacity = 0.5,
+                   popup = ~paste("Spread Rate:", fire_spread_rate, "<br>",
+                                  "Temperature:", temperature)) %>%
+  setView(lng = mean(data$fire_location_longitude, na.rm = TRUE), lat = mean(data$fire_location_latitude, na.rm = TRUE), zoom = 6) %>%
+  addLegend("bottomright", 
+            colors = c("red", "green"), 
+            labels = c("High Spread Rate", "Low Spread Rate"), 
+            title = "Spread Rate Category")
+
+```
+
+```{r}
+# Extract the p-value for temperature in the transformed model
+p_value_log <- summary(log_model)$coefficients[2, 4]
+
+# Hypothesis testing
+if (p_value_log < 0.05) {
+  print("Reject the null hypothesis. There is a statistically significant relationship between temperature and fire spread rate (log-transformed).")
+} else {
+  print("Fail to reject the null hypothesis. There is no statistically significant relationship between temperature and fire spread rate (log-transformed).")
+}
+
+# Print p-value for confirmation
+print(paste("P-value:", p_value_log))
+```
